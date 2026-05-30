@@ -80,6 +80,12 @@ logger = logging.getLogger(__name__)
 _PLUGIN_ROOT = Path(__file__).resolve().parent
 _PLUGIN_METADATA: dict[str, str] | None = None
 _SESSION_END_BUSY_TIMEOUT_MS = 50
+
+# ⚡ Bolt performance optimization: Compile regex to speed up _is_replayed_context_scaffold_message
+_SCAFFOLD_SUMMARY_RE = re.compile(
+    r"\[(?:Recent|Session Arc|Durable|Depth-\d+) Summary \(d\d+, node \d+\)\]"
+)
+
 _VISIBLE_TEXT_PART_TYPES = {"text", "input_text", "output_text"}
 _INTERNAL_ASSISTANT_PART_TYPES = {
     "analysis",
@@ -2447,12 +2453,7 @@ class LCMEngine(ContextEngine):
             return True
         if "[Expand for details:" not in content:
             return False
-        return bool(
-            re.search(
-                r"\[(?:Recent|Session Arc|Durable|Depth-\d+) Summary \(d\d+, node \d+\)\]",
-                content,
-            )
-        )
+        return bool(_SCAFFOLD_SUMMARY_RE.search(content))
 
     @staticmethod
     def _canonicalize_tool_call_identity_value(value: Any) -> Any:

@@ -437,6 +437,7 @@ class SummaryDAG:
         fetch_limit = compute_like_fallback_fetch_limit(limit, terms, phrases)
         base_args = list(args)
         collapse_risky_repeats = contains_risky_fts_ascii(query)
+        normalized_terms = [t.lower() for t in terms if t]
         candidate_cap = compute_search_candidate_cap(limit)
         offset = 0
         scanned_rows = 0
@@ -454,9 +455,10 @@ class SummaryDAG:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
+                lowered_summary = (node.summary or "").lower()
                 score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
+                    min(lowered_summary.count(term), 1) if collapse_risky_repeats else lowered_summary.count(term)
+                    for term in normalized_terms
                 )
                 if score <= 0:
                     continue

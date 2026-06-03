@@ -830,6 +830,7 @@ class MessageStore:
         normalized_sort = normalize_search_sort(sort)
         results: List[Dict[str, Any]] = []
         collapse_risky_repeats = contains_risky_fts_ascii(query)
+        normalized_terms = [t.lower() for t in terms if t]
         order_by = ""
         order_args: list[Any] = []
         if normalized_sort == "recency":
@@ -905,9 +906,10 @@ class MessageStore:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
+                lowered_content = content.lower()
                 score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
+                    min(lowered_content.count(term), 1) if collapse_risky_repeats else lowered_content.count(term)
+                    for term in normalized_terms
                 )
                 if score <= 0:
                     continue

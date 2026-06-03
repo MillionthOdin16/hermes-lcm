@@ -33,7 +33,7 @@ jobs:
         id: branches
         run: |
           PATCH_BRANCHES=$(git branch -r | grep "origin/${{ env.PATCH_PREFIX }}" | sed 's|origin/||' || true)
-          echo "branches=$(echo "$PATCH_BRANCHES" | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          echo "branches=$(echo "$PATCH_BRANCHES" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Rebase each branch
         id: rebase
@@ -42,12 +42,12 @@ jobs:
           FAIL=0
           for BRANCH in ${{ steps.branches.outputs.branches }}; do
             echo "=== Rebase $BRANCH ==="
-            git checkout -b $BRANCH origin/$BRANCH 2>/dev/null || git checkout $BRANCH
+            git checkout -b "$BRANCH" "origin/$BRANCH" 2>/dev/null || git checkout "$BRANCH"
 
             if git rebase origin/main 2>&1; then
               echo "  OK: $BRANCH rebased cleanly"
               if [ "${{ github.event.inputs.dry_run }}" != "true" ]; then
-                git push origin $BRANCH --force-with-lease 2>&1 || echo "  WARN: push failed (expected in dry-run)"
+                git push origin "$BRANCH" --force-with-lease 2>&1 || echo "  WARN: push failed (expected in dry-run)"
               fi
               OK=$((OK + 1))
             else
@@ -62,7 +62,9 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Patch Rebase Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **OK:** ${{ steps.rebase.outputs.ok }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Failed:** ${{ steps.rebase.outputs.fail }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Patch Rebase Summary"
+            echo ""
+            echo "- **OK:** ${{ steps.rebase.outputs.ok }}"
+            echo "- **Failed:** ${{ steps.rebase.outputs.fail }}"
+          } >> "$GITHUB_STEP_SUMMARY"

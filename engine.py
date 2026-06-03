@@ -85,7 +85,7 @@ _PLUGIN_METADATA: dict[str, str] | None = None
 # 50 ms was far too short — any concurrent writer holding the lock for
 # longer caused silent finalization skips.  500 ms is bounded enough
 # not to stall a gateway but long enough to survive typical contention.
-_SESSION_END_BUSY_TIMEOUT_MS = 500
+_SESSION_END_BUSY_TIMEOUT_MS = 750
 # Extended timeout used when retrying a previously-deferred finalization
 # at the start of a new session, where blocking is less time-critical.
 _DEFERRED_FINALIZE_RETRY_TIMEOUT_MS = 2000

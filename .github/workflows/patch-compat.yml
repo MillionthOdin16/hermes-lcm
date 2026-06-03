@@ -57,8 +57,8 @@ jobs:
             fi
             git checkout main 2>/dev/null || true
           done
-          echo "ok=$OK" >> $GITHUB_OUTPUT
-          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+          echo "ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         run: |

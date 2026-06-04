@@ -3229,6 +3229,12 @@ class LCMEngine(ContextEngine):
             if stored["store_id"] > self._last_compacted_store_id
         ]
 
+        candidate_identities = []
+        for stored in candidates:
+            ident = self._message_replay_identity(stored, stored_row=True)
+            cleanup_ident = self._active_cleanup_replay_identity(ident)
+            candidate_identities.append((ident, cleanup_ident))
+
         ids: list[int] = []
         store_idx = 0
         for msg in messages:
@@ -3236,17 +3242,16 @@ class LCMEngine(ContextEngine):
             wanted_cleanup_identity = self._active_cleanup_replay_identity(message_identity)
             probe_idx = store_idx
             while probe_idx < len(candidates):
-                stored = candidates[probe_idx]
-                stored_identity = self._message_replay_identity(stored, stored_row=True)
+                stored_identity, stored_cleanup_identity = candidate_identities[probe_idx]
                 if stored_identity == message_identity:
-                    ids.append(stored["store_id"])
+                    ids.append(candidates[probe_idx]["store_id"])
                     store_idx = probe_idx + 1
                     break
                 if (
                     wanted_cleanup_identity is not None
-                    and self._active_cleanup_replay_identity(stored_identity) == wanted_cleanup_identity
+                    and stored_cleanup_identity == wanted_cleanup_identity
                 ):
-                    ids.append(stored["store_id"])
+                    ids.append(candidates[probe_idx]["store_id"])
                     store_idx = probe_idx + 1
                     break
                 probe_idx += 1

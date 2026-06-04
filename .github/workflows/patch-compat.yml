@@ -32,7 +32,7 @@ jobs:
       - name: List patch branches
         id: branches
         run: |
-          PATCH_BRANCHES=$(git branch -r | grep "origin/${{ env.PATCH_PREFIX }}" | sed 's|origin/||' || true)
+          PATCH_BRANCHES=$(git branch -r | grep "origin/${PATCH_PREFIX}" | sed 's|origin/||' || true)
           echo "branches=$(echo "$PATCH_BRANCHES" | tr '\n' ' ')" >> $GITHUB_OUTPUT
 
       - name: Rebase each branch
@@ -46,7 +46,7 @@ jobs:
 
             if git rebase origin/main 2>&1; then
               echo "  OK: $BRANCH rebased cleanly"
-              if [ "${{ github.event.inputs.dry_run }}" != "true" ]; then
+              if [ "${DRY_RUN}" != "true" ]; then
                 git push origin $BRANCH --force-with-lease 2>&1 || echo "  WARN: push failed (expected in dry-run)"
               fi
               OK=$((OK + 1))
@@ -59,6 +59,8 @@ jobs:
           done
           echo "ok=$OK" >> $GITHUB_OUTPUT
           echo "fail=$FAIL" >> $GITHUB_OUTPUT
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
 
       - name: Summary
         run: |

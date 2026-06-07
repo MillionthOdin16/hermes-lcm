@@ -487,10 +487,16 @@ class LCMEngine(ContextEngine):
             return True
         self.context_length = parsed_context_length
         self._context_length_source = source
-        self.threshold_tokens = int(
-            parsed_context_length * self._config.context_threshold
-        )
+        self.threshold_tokens = self._compute_threshold_tokens(parsed_context_length)
         return True
+
+    def _compute_threshold_tokens(self, context_length: int) -> int:
+        """Compute effective threshold_tokens with the configured cap applied."""
+        fraction = int(context_length * self._config.context_threshold)
+        cap = int(getattr(self._config, "threshold_tokens_cap", 0) or 0)
+        if cap > 0:
+            return min(fraction, cap)
+        return fraction
 
     def _session_metadata_matches_active_runtime(
         self,

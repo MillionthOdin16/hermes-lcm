@@ -30,13 +30,17 @@ def _get_encoder():
 
 
 def count_tokens(text: str) -> int:
-    """Count tokens in a string."""
+    """Count tokens in a string.
+
+    ⚡ Bolt: We use encode_ordinary() instead of encode() because it's slightly faster
+    for simple strings and avoids throwing exceptions on special tokens.
+    """
     if not text:
         return 0
     enc = _get_encoder()
     if enc is not None:
         try:
-            return len(enc.encode(text))
+            return len(enc.encode_ordinary(text))
         except Exception:
             pass
     return len(text) // _CHARS_PER_TOKEN + 1

@@ -302,7 +302,7 @@ class LCMConfig:
 
     @classmethod
     def from_env(cls) -> "LCMConfig":
-        """Build config from environment variables (LCM_ prefix)."""
+        """Build config from config.yaml compression section, with LCM_ env var overrides."""
         c = cls()
         _int = _parse_int_env
         _float = _parse_float_env
@@ -310,6 +310,8 @@ class LCMConfig:
 
         c.fresh_tail_count = _int("LCM_FRESH_TAIL_COUNT", c.fresh_tail_count)
         c.leaf_chunk_tokens = _int("LCM_LEAF_CHUNK_TOKENS", c.leaf_chunk_tokens)
+        # Primary source: compression.threshold in config.yaml.
+        # LCM_CONTEXT_THRESHOLD env var overrides if set.
         c.context_threshold = _float(
             "LCM_CONTEXT_THRESHOLD",
             _hermes_compression_threshold(c.context_threshold),
@@ -335,6 +337,12 @@ class LCMConfig:
         c.deferred_maintenance_max_passes = _int(
             "LCM_DEFERRED_MAINTENANCE_MAX_PASSES",
             c.deferred_maintenance_max_passes,
+        )
+        # Primary source: compression.threshold_tokens_cap in config.yaml.
+        # LCM_THRESHOLD_TOKENS_CAP env var overrides if set.
+        c.threshold_tokens_cap = _int(
+            "LCM_THRESHOLD_TOKENS_CAP",
+            _hermes_threshold_tokens_cap(c.threshold_tokens_cap),
         )
         c.critical_budget_pressure_ratio = _float(
             "LCM_CRITICAL_BUDGET_PRESSURE_RATIO",

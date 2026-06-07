@@ -79,7 +79,16 @@ logger = logging.getLogger(__name__)
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent
 _PLUGIN_METADATA: dict[str, str] | None = None
-_SESSION_END_BUSY_TIMEOUT_MS = 50
+# Busy-wait timeout applied to SQLite writes during session teardown.
+# Bounded to avoid blocking gateway lifecycle paths, but large enough
+# to ride through real-world write contention from concurrent sessions.
+# 50 ms was far too short — any concurrent writer holding the lock for
+# longer caused silent finalization skips.  500 ms is bounded enough
+# not to stall a gateway but long enough to survive typical contention.
+_SESSION_END_BUSY_TIMEOUT_MS = 500
+# Extended timeout used when retrying a previously-deferred finalization
+# at the start of a new session, where blocking is less time-critical.
+_DEFERRED_FINALIZE_RETRY_TIMEOUT_MS = 2000
 _VISIBLE_TEXT_PART_TYPES = {"text", "input_text", "output_text"}
 _INTERNAL_ASSISTANT_PART_TYPES = {
     "analysis",
@@ -382,6 +391,12 @@ class LCMEngine(ContextEngine):
         self._pending_reset_session_id: str = ""
         self._pending_reset_conversation_id: str = ""
         self._pending_reset_frontier_store_id: int = 0
+        # Deferred finalization: populated when on_session_end cannot acquire
+        # the SQLite lock within _SESSION_END_BUSY_TIMEOUT_MS.  Retried under
+        # _DEFERRED_FINALIZE_RETRY_TIMEOUT_MS at the start of the next session.
+        self._deferred_finalize_session_id: str = ""
+        self._deferred_finalize_conversation_id: str = ""
+        self._deferred_finalize_frontier_store_id: int = 0
         self._thread_context = threading.local()
         self._auxiliary_session_ids: set[str] = set()
         self._auxiliary_lineage_session_ids: set[str] = set()
@@ -478,7 +493,6 @@ class LCMEngine(ContextEngine):
         if parsed_context_length <= 0:
             logger.debug(
                 "LCM cleared non-positive %s context_length: %r",
-                source,
                 context_length,
             )
             self.context_length = 0
@@ -1953,6 +1967,48 @@ class LCMEngine(ContextEngine):
         self._clear_pending_reset_boundary()
         self._log_session_filter_diagnostics()
 
+    def _retry_deferred_finalization(self) -> None:
+        """Retry a finalization that was skipped in a previous on_session_end.
+
+        Called at the start of a new session when contention has likely
+        subsided.  Uses an extended busy-timeout because blocking is less
+        time-critical at session-start than at session-end.
+        """
+        if not self._deferred_finalize_session_id:
+            return
+        deferred_session = self._deferred_finalize_session_id
+        deferred_conversation = self._deferred_finalize_conversation_id
+        deferred_frontier = self._deferred_finalize_frontier_store_id
+        # Clear immediately so a failure here doesn't loop forever.
+        self._deferred_finalize_session_id = ""
+        self._deferred_finalize_conversation_id = ""
+        self._deferred_finalize_frontier_store_id = 0
+        try:
+            with _temporary_sqlite_busy_timeout(
+                [
+                    getattr(self._store, "_conn", None),
+                    getattr(self._lifecycle, "_conn", None),
+                ],
+                _DEFERRED_FINALIZE_RETRY_TIMEOUT_MS,
+            ):
+                self._lifecycle.finalize_session(
+                    deferred_conversation,
+                    deferred_session,
+                    frontier_store_id=deferred_frontier,
+                )
+            logger.info(
+                "LCM deferred finalization completed for session %s (conversation %s)",
+                deferred_session,
+                deferred_conversation,
+            )
+        except Exception as exc:
+            logger.warning(
+                "LCM deferred finalization retry failed for session %s: %s — "
+                "lifecycle state for that session may be incomplete",
+                deferred_session,
+                exc,
+            )
+
     def on_session_start(self, session_id: str, **kwargs) -> None:
         if "hermes_home" in kwargs:
             self._rebind_storage_for_home(str(kwargs.get("hermes_home") or ""))
@@ -1995,6 +2051,10 @@ class LCMEngine(ContextEngine):
             self._last_compacted_store_id = 0
             self._last_overflow_recovery_failed = False
             self._last_condensation_suppressed_reason = ""
+        # Retry any finalization that was deferred from the previous
+        # session_end due to SQLite lock contention.  Contention is
+        # typically gone by the time a new session starts.
+        self._retry_deferred_finalization()
         self._apply_session_start_metadata(session_id, kwargs)
         self._bind_lifecycle_state(
             session_id,
@@ -2054,9 +2114,14 @@ class LCMEngine(ContextEngine):
                     return
                 except Exception as exc:
                     if _is_sqlite_locked_error(exc):
+                        # Record for deferred retry at next session start.
+                        self._deferred_finalize_session_id = session_id
+                        self._deferred_finalize_conversation_id = self._conversation_id
+                        self._deferred_finalize_frontier_store_id = self._last_compacted_store_id
                         logger.warning(
-                            "LCM session-end lifecycle finalization skipped due to SQLite lock after short wait; "
-                            "raw messages were ingested but lifecycle state may be finalized later: %s",
+                            "LCM session-end lifecycle finalization skipped due to SQLite lock after "
+                            "%d ms wait; scheduled for deferred retry at next session start: %s",
+                            _SESSION_END_BUSY_TIMEOUT_MS,
                             exc,
                         )
                         return
@@ -3259,6 +3324,12 @@ class LCMEngine(ContextEngine):
             if stored["store_id"] > self._last_compacted_store_id
         ]
 
+        candidate_identities = []
+        for stored in candidates:
+            ident = self._message_replay_identity(stored, stored_row=True)
+            cleanup_ident = self._active_cleanup_replay_identity(ident)
+            candidate_identities.append((ident, cleanup_ident))
+
         ids: list[int] = []
         store_idx = 0
         for msg in messages:
@@ -3266,17 +3337,16 @@ class LCMEngine(ContextEngine):
             wanted_cleanup_identity = self._active_cleanup_replay_identity(message_identity)
             probe_idx = store_idx
             while probe_idx < len(candidates):
-                stored = candidates[probe_idx]
-                stored_identity = self._message_replay_identity(stored, stored_row=True)
+                stored_identity, stored_cleanup_identity = candidate_identities[probe_idx]
                 if stored_identity == message_identity:
-                    ids.append(stored["store_id"])
+                    ids.append(candidates[probe_idx]["store_id"])
                     store_idx = probe_idx + 1
                     break
                 if (
                     wanted_cleanup_identity is not None
-                    and self._active_cleanup_replay_identity(stored_identity) == wanted_cleanup_identity
+                    and stored_cleanup_identity == wanted_cleanup_identity
                 ):
-                    ids.append(stored["store_id"])
+                    ids.append(candidates[probe_idx]["store_id"])
                     store_idx = probe_idx + 1
                     break
                 probe_idx += 1

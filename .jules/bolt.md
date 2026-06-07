@@ -1,0 +1,4 @@
+## 2026-03-05 - Avoid repetitive inner loop string allocations
+
+**Learning:** Python string allocations can become an immense bottleneck in tight query loops if `.lower()` or other mutating text operations are executed per-item or inside per-item helper functions on long documents. Using `min(count_term_matches(node.summary, term), 1)` dynamically allocates a new lowercase string for `node.summary` (a large text) inside the inner search loop repeatedly.
+**Action:** Always pre-calculate lowercase versions of inputs (`lowered = content.lower()`) before tight substring check loops. If using `.count()` heavily inside nested matching contexts (like multi-term search scoring across many database rows), hoist `.lower()` allocations out of the row processing/term loops altogether and use Python's fast native `lowered.count(term.lower())` or pre-normalized terms directly.

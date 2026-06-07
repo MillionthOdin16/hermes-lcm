@@ -1364,7 +1364,9 @@ class LCMEngine(ContextEngine):
             include_explicit=False,
         )
         if in_process_parent_id:
-            if not parent_session_id or in_process_parent_id == parent_session_id:
+            if not parent_session_id:
+                return True
+            elif in_process_parent_id == parent_session_id:
                 return True
             if in_process_parent_id in known_auxiliary_ids:
                 return True

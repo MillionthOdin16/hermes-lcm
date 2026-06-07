@@ -902,12 +902,14 @@ class MessageStore:
             )
 
         def add_rows(rows: list[sqlite3.Row]) -> None:
+            lowered_terms = [t.lower() for t in terms if t]
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
+                lowered_content = content.lower()
                 score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
+                    min(lowered_content.count(term), 1) if collapse_risky_repeats else lowered_content.count(term)
+                    for term in lowered_terms
                 )
                 if score <= 0:
                     continue

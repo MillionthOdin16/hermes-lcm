@@ -3254,10 +3254,12 @@ class LCMEngine(ContextEngine):
         content from older already-compacted history cannot hijack the mapping.
         Synthetic summary messages simply fail to match and are skipped.
         """
-        candidates = [
-            stored for stored in self._store.get_session_messages(self._session_id)
-            if stored["store_id"] > self._last_compacted_store_id
-        ]
+        # ⚡ Bolt Optimization: Load only uncompacted candidates to avoid O(N) fetching
+        candidates = self._store.get_range(
+            self._session_id,
+            start_id=self._last_compacted_store_id + 1,
+            limit=10000,
+        )
 
         ids: list[int] = []
         store_idx = 0

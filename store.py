@@ -328,32 +328,45 @@ class MessageStore:
             session_id=session_id,
         )
 
-        ids = []
         ts = time.time()
+        normalized_source = _normalize_source_value(source)
+
+        batch_data = []
+        for msg, est in zip(protected_messages, token_estimates):
+            tc = msg.get("tool_calls")
+            batch_data.append((
+                session_id,
+                normalized_source,
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                json.dumps(tc) if tc else None,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+            ))
+
+        if not batch_data:
+            return []
+
         with self._write_lock, self._conn:
-            for msg, est in zip(protected_messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                    ),
-                )
-                ids.append(cur.lastrowid)
-        return ids
+            start_id_row = self._conn.execute(
+                "SELECT COALESCE(MAX(store_id), 0) FROM messages"
+            ).fetchone()
+            start_id = start_id_row[0] if start_id_row else 0
+
+            self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                batch_data
+            )
+
+            last_id = self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        return list(range(start_id + 1, last_id + 1))
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:
         """Move all persisted messages from one session_id to another."""

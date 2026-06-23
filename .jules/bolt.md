@@ -1,0 +1,3 @@
+## 2026-03-05 - Batch insert bottleneck with list comprehension
+**Learning:** SQLite's `append_batch` was looping over rows and doing single inserts with `.execute()`. `cur.executemany` handles batches natively and prevents Python loop overhead. But we cannot reliably use `RETURNING` with Python's sqlite3 driver in old SQLite versions across all environments. So selecting MAX ID, executemany, and calculating the returned ids by checking `cur.rowcount` is ~25-50% faster, making message ingestion much cheaper.
+**Action:** Always favor `executemany` for multiple inserts in SQLite when `RETURNING` is not available.

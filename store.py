@@ -328,31 +328,44 @@ class MessageStore:
             session_id=session_id,
         )
 
-        ids = []
         ts = time.time()
+
+        insert_args = []
+        for msg, est in zip(protected_messages, token_estimates):
+            tc = msg.get("tool_calls")
+            tc_json = json.dumps(tc) if tc else None
+            insert_args.append((
+                session_id,
+                _normalize_source_value(source),
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                tc_json,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+            ))
+
         with self._write_lock, self._conn:
-            for msg, est in zip(protected_messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                    ),
-                )
-                ids.append(cur.lastrowid)
+            if not insert_args:
+                return []
+
+            # OPTIMIZATION: Use executemany for batch inserts to minimize SQLite overhead.
+            # Since Python's sqlite3 doesn't support RETURNING, we query MAX(store_id)
+            # and calculate IDs backwards using rowcount within the write lock to prevent race conditions.
+            cur = self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                insert_args
+            )
+
+            rowcount = cur.rowcount
+            max_id = cur.lastrowid
+            ids = list(range(max_id - rowcount + 1, max_id + 1))
+
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:

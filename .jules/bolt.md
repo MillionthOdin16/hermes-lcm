@@ -1,0 +1,3 @@
+## 2026-06-25 - Using executemany for batch inserts and retrieving auto-increment IDs
+**Learning:** Python's `sqlite3` driver does not support retrieving auto-increment IDs from `executemany` directly. The `RETURNING` clause is not supported and `cur.lastrowid` is `None` after `executemany` is called.
+**Action:** When using `executemany` for batch inserts, use `conn.execute("SELECT last_insert_rowid()").fetchone()[0]` to get the last inserted ID. Then use `cur.rowcount` to calculate backwards: `range(last_id - cur.rowcount + 1, last_id + 1)`. This avoids iterating through rows and calling `execute` which suffers from the N+1 Python-SQLite boundary crossings issue.

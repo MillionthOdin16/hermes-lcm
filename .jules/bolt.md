@@ -1,0 +1,3 @@
+## 2026-06-26 - [SQLite Optimization Pattern]
+**Learning:** When using `executemany()` for batch inserts where the `RETURNING` clause is not supported by the Python driver, retrieve auto-incremented IDs by using `cur.lastrowid` alongside `cur.rowcount` to calculate the inserted IDs backwards instead of guessing the column name and querying `SELECT MAX(id)` manually. Note: `cur.lastrowid` can be `None` after `executemany` in Python `sqlite3`, so one must use `conn.execute('SELECT last_insert_rowid()').fetchone()[0]` to get the last ID, and compute the array of IDs by subtracting `cur.rowcount` from it and adding 1.
+**Action:** Use `executemany` + `last_insert_rowid()` calculation for bulk inserts to optimize speed.

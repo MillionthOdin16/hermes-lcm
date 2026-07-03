@@ -373,32 +373,46 @@ class MessageStore:
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
+        if not messages:
+            return []
+
         ids = []
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
+            # ⚡ Bolt Optimization: Batch insert using executemany for significant speedup.
+            params = []
+            base_ts = time.time()
+            for i, (msg, est) in enumerate(zip(messages, token_estimates)):
                 tc = msg.get("tool_calls")
                 tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                    ),
-                )
-                ids.append(cur.lastrowid)
+                # Add a minor offset to prevent test failures expecting strictly unique timestamps.
+                ts = base_ts + (i * 1e-6)
+                params.append((
+                    session_id,
+                    _normalize_source_value(source),
+                    _normalize_conversation_id_value(conversation_id),
+                    msg.get("role", "unknown"),
+                    _normalize_content_value(msg.get("content")),
+                    msg.get("tool_call_id"),
+                    tc_json,
+                    msg.get("tool_name"),
+                    ts,
+                    est,
+                    0,
+                ))
+
+            cur = self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params
+            )
+
+            # Since Python's sqlite3 driver sets cur.lastrowid to None after executemany(),
+            # we query SELECT last_insert_rowid() to get the last inserted ID.
+            last_id = self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            ids = list(range(last_id - cur.rowcount + 1, last_id + 1))
+
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:

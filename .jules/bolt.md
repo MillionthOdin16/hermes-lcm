@@ -1,0 +1,3 @@
+## 2026-07-08 - Batch Insert Optimization Pattern
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. Also, tests require strict monotonicity/uniqueness in timestamps for message sequences.
+**Action:** To optimize `append_batch` inserts from O(N) query executions to O(1) batch execution, generate sequential parameters with a microsecond offset `time.time() + (i * 1e-6)` to preserve timestamp uniqueness. After `executemany()`, run `SELECT last_insert_rowid()` and calculate preceding IDs backward using `cur.rowcount` or `len(messages)` to return the created store_ids.

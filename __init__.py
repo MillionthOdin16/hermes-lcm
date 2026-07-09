@@ -8,6 +8,7 @@ Based on the LCM paper by Ehrlich & Blackman (Voltropy PBC, Feb 2026).
 
 import logging
 import os
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +190,7 @@ def register(ctx):
         register_command(
             "lcm",
             lambda raw_args: handle_lcm_command(raw_args, engine),
-            description="LCM status and diagnostics",
+            description="LCM context management commands",
         )
     elif callable(register_command):
         logger.info("LCM slash command registration disabled (set LCM_ENABLE_SLASH_COMMAND=1 to enable /lcm)")
@@ -256,3 +257,80 @@ def register(ctx):
         logger.debug("LCM could not register post_llm_call hook: %s", exc)
 
     logger.info("LCM plugin loaded — lossless context management active")
+
+
+def health_check() -> dict:
+    """
+    Returns hermes-lcm operational status.
+    Checks engine binding, storage availability, and DB path.
+    Note: status "error" is expected when not running inside active Hermes runtime.
+    """
+    status = "ok"
+    issues = []
+    storage_path = ""
+    sessions_active = 0
+
+    try:
+        from .engine import LCMEngine
+        from .config import LCMConfig
+
+        default_cfg = LCMConfig.from_env()
+        hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+        engine = LCMEngine(config=default_cfg, hermes_home=hermes_home)
+        storage_path = str(engine.db_path) if hasattr(engine, "db_path") else "unknown"
+
+        if not engine.db_path:
+            issues.append("storage_not_initialized")
+            status = "degraded"
+        elif not engine.db_path.exists():
+            issues.append("storage_path_not_found")
+            status = "degraded"
+
+        if callable(getattr(engine, "get_session_count", None)):
+            try:
+                sessions_active = engine.get_session_count()
+            except Exception:
+                pass
+
+        # Watchdog: check maintenance debt load
+        try:
+            lifecycle_conn = getattr(getattr(engine, "_lifecycle", None), "_conn", None)
+            if lifecycle_conn is not None:
+                debt_rows = lifecycle_conn.execute(
+                    """
+                    SELECT COUNT(*) AS debt_count,
+                           SUM(debt_size_estimate) AS total_debt
+                      FROM lcm_lifecycle_state
+                     WHERE debt_kind IS NOT NULL AND debt_size_estimate > 0
+                    """
+                ).fetchone()
+                if debt_rows and debt_rows["debt_count"]:
+                    debt_count = debt_rows["debt_count"]
+                    total_debt = debt_rows["total_debt"] or 0
+                    if total_debt > 500_000:
+                        status = "degraded"
+                        issues.append(f"high_maintenance_debt: {debt_count} convos, {total_debt} tokens")
+                    # else: healthy, no issue flag needed
+        except Exception:
+            pass  # non-critical diagnostic
+
+    except Exception as e:
+        err_str = str(e)
+        issues.append(err_str)
+        # agent module missing = Hermes runtime not active = "unknown" (expected,
+        # not an error). The plugin is unavailable but not broken.
+        if "agent" in err_str:
+            status = "unknown"
+        elif "ContextEngine" in err_str:
+            status = "degraded"
+        else:
+            status = "error"
+
+    return {
+        "plugin": "hermes-lcm",
+        "status": status,
+        "storage_path": storage_path,
+        "sessions_active": sessions_active,
+        "issues": issues,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

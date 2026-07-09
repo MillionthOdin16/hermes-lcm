@@ -1,0 +1,3 @@
+## 2026-07-09 - SQLite Optimization Pattern for Batch Inserts
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. The codebase enforces a regression constraint where each message row must receive a strictly unique timestamp (e.g. for `test_append_batch_timestamps_are_unique_per_row`).
+**Action:** When using `executemany`, ensure you apply a minor offset (e.g., `time.time() + (i * 1e-6)`) to timestamps generated for batch parameters. To retrieve auto-incremented IDs without a `RETURNING` clause, execute `SELECT last_insert_rowid()` immediately after the batch insert to get the last inserted ID, then calculate the preceding inserted IDs backward using the length of the batch.

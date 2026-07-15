@@ -379,33 +379,43 @@ class MessageStore:
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
-        ids = []
+        params = []
+        normalized_source = _normalize_source_value(source)
+        normalized_conversation_id = _normalize_conversation_id_value(conversation_id)
+
+        for i, (msg, est) in enumerate(zip(messages, token_estimates)):
+            tc = msg.get("tool_calls")
+            tc_json = json.dumps(tc) if tc else None
+            # Maintain unique timestamp per row to pass regression tests while doing batch insert
+            ts = time.time() + (i * 1e-6)
+            params.append((
+                session_id,
+                normalized_source,
+                normalized_conversation_id,
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                tc_json,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+            ))
+
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                    ),
-                )
-                ids.append(cur.lastrowid)
-        return ids
+            self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params
+            )
+            # Fetch the last inserted rowid to calculate back the generated IDs
+            cur = self._conn.execute('SELECT last_insert_rowid()')
+            last_id = cur.fetchone()[0]
+
+        count = len(params)
+        return list(range(last_id - count + 1, last_id + 1))
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:
         """Move all persisted messages from one session_id to another."""

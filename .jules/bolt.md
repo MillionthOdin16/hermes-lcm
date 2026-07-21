@@ -1,0 +1,4 @@
+
+## 2026-03-05 - [Optimize SQLite Batch Inserts]
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. To retrieve auto-incremented IDs for batch inserts without a `RETURNING` clause, execute `SELECT last_insert_rowid()` immediately after the batch insert to get the last inserted ID, then calculate the preceding inserted IDs backward using `cur.rowcount` or `len(batch)`.
+**Action:** When using `executemany` in Python's `sqlite3`, use `last_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]` and calculate the list of inserted IDs `list(range(last_id - len(batch) + 1, last_id + 1))` to reconstruct the row IDs. Ensure you apply a minor offset to the parameters generated for the batch (e.g. `time.time() + (i * 1e-6)`) if tests enforce strictly unique timestamps across rows in a single batch.

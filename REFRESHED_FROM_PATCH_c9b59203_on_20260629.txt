@@ -1,0 +1,13 @@
+# Refresh marker for patch-lcm-sqlite-busy-timeout
+
+Original commit: c9b59203da8643077264b9e23dddbc25b60b061f
+Refresh date: 2026-06-29
+Status: empty cherry-pick — patch functionally absorbed
+
+The 3-line change in the original patch (refactoring `if not parent_session_id or
+in_process_parent_id == parent_session_id:` into a separate if/elif block) is already
+present in current origin/main. The cherry-pick produced no diff because upstream
+incorporates the same refactor structure.
+
+This marker file ensures the refresh produces a non-empty commit that the
+patch-manager sync-fork can push to update the fork branch pointer.

@@ -660,13 +660,28 @@ class LCMEngine(CompactionMixin, ResetStateMixin, ReconcileMixin, AuxiliarySessi
             self._runtime_context_threshold(model=model, provider=provider)
         )
         self.threshold_percent = self.context_threshold
-        context_threshold_tokens = int(
-            effective_context_length * self.context_threshold
+        context_threshold_tokens = self._compute_threshold_tokens(
+            effective_context_length,
+            self.context_threshold,
         )
         self.threshold_tokens = self._effective_threshold_tokens(
             context_threshold_tokens
         )
         return True
+
+    def _compute_threshold_tokens(
+        self,
+        context_length: int,
+        context_threshold: float | None = None,
+    ) -> int:
+        """Compute effective threshold_tokens with the configured cap applied."""
+        fraction = int(context_length * (
+            self._config.context_threshold if context_threshold is None else context_threshold
+        ))
+        cap = int(getattr(self._config, "threshold_tokens_cap", 0) or 0)
+        if cap > 0:
+            return min(fraction, cap)
+        return fraction
 
     def _session_metadata_matches_active_runtime(
         self,

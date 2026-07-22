@@ -251,6 +251,23 @@ def _hermes_compression_threshold_with_source(default: float) -> tuple[float, st
     return default, "default"
 
 
+def _hermes_threshold_tokens_cap(default: int) -> int:
+    """Read compression.threshold_tokens_cap from ~/.hermes/config.yaml."""
+    cfg = _load_hermes_config_yaml()
+    try:
+        compression = cfg.get("compression") or {}
+        if not isinstance(compression, dict):
+            return default
+        if _config_bool_disabled(compression.get("enabled")):
+            return default
+        value = compression.get("threshold_tokens_cap")
+        if value is None:
+            return default
+        return int(value)
+    except Exception:
+        return default
+
+
 def _hermes_auxiliary_compression_timeout_ms(default: int) -> int:
     """Read Hermes auxiliary.compression.timeout when no LCM override is present.
 
@@ -457,6 +474,10 @@ class LCMConfig:
     threshold_full_sweep_enabled: bool = False
     # Target frontier-summary size after a sweep (0 = derive one leaf budget).
     summary_prefix_target_tokens: int = 0
+
+    # -- Threshold cap ---
+    # Absolute ceiling for threshold_tokens (0 = disabled).
+    threshold_tokens_cap: int = 0
 
     # -- Escalation ---
     # L2 bullet budget as fraction of L1
@@ -678,7 +699,7 @@ class LCMConfig:
 
     @classmethod
     def from_env(cls) -> "LCMConfig":
-        """Build config from environment variables (LCM_ prefix)."""
+        """Build config from config.yaml compression section, with LCM_ env var overrides."""
         c = cls()
         config_sources: dict[str, str] = {}
         config_source_warnings: list[str] = []
@@ -716,6 +737,81 @@ class LCMConfig:
             c.codex_gpt55_autoraise_enabled
         )
         _record("codex_gpt55_autoraise_enabled", source)
+        c.incremental_max_depth = _int("LCM_INCREMENTAL_MAX_DEPTH", c.incremental_max_depth)
+        c.condensation_fanin = _int("LCM_CONDENSATION_FANIN", c.condensation_fanin)
+        c.dynamic_leaf_chunk_enabled = _parse_bool_env(
+            "LCM_DYNAMIC_LEAF_CHUNK_ENABLED", c.dynamic_leaf_chunk_enabled
+        )
+        c.dynamic_leaf_chunk_max = _int("LCM_DYNAMIC_LEAF_CHUNK_MAX", c.dynamic_leaf_chunk_max)
+        c.cache_friendly_condensation_enabled = _parse_bool_env(
+            "LCM_CACHE_FRIENDLY_CONDENSATION_ENABLED",
+            c.cache_friendly_condensation_enabled,
+        )
+        c.cache_friendly_min_debt_groups = _int(
+            "LCM_CACHE_FRIENDLY_MIN_DEBT_GROUPS",
+            c.cache_friendly_min_debt_groups,
+        )
+        c.deferred_maintenance_enabled = _parse_bool_env(
+            "LCM_DEFERRED_MAINTENANCE_ENABLED",
+            c.deferred_maintenance_enabled,
+        )
+        c.deferred_maintenance_max_passes = _int(
+            "LCM_DEFERRED_MAINTENANCE_MAX_PASSES",
+            c.deferred_maintenance_max_passes,
+        )
+        # Primary source: compression.threshold_tokens_cap in config.yaml.
+        # LCM_THRESHOLD_TOKENS_CAP env var overrides if set.
+        c.threshold_tokens_cap = _int(
+            "LCM_THRESHOLD_TOKENS_CAP",
+            _hermes_threshold_tokens_cap(c.threshold_tokens_cap),
+        )
+        c.critical_budget_pressure_ratio = _float(
+            "LCM_CRITICAL_BUDGET_PRESSURE_RATIO",
+            c.critical_budget_pressure_ratio,
+        )
+        c.l3_truncate_tokens = _int("LCM_L3_TRUNCATE_TOKENS", c.l3_truncate_tokens)
+        c.max_assembly_tokens = _int("LCM_MAX_ASSEMBLY_TOKENS", c.max_assembly_tokens)
+        c.reserve_tokens_floor = _int("LCM_RESERVE_TOKENS_FLOOR", c.reserve_tokens_floor)
+        c.custom_instructions = _str("LCM_CUSTOM_INSTRUCTIONS", c.custom_instructions)
+        c.extraction_enabled = _parse_bool_env("LCM_EXTRACTION_ENABLED", c.extraction_enabled)
+        c.extraction_model = _str("LCM_EXTRACTION_MODEL", c.extraction_model)
+        c.extraction_output_path = _str("LCM_EXTRACTION_OUTPUT_PATH", c.extraction_output_path)
+        c.sensitive_patterns_enabled = _parse_bool_env(
+            "LCM_SENSITIVE_PATTERNS_ENABLED",
+            c.sensitive_patterns_enabled,
+        )
+        raw_sensitive_patterns = os.environ.get("LCM_SENSITIVE_PATTERNS")
+        if raw_sensitive_patterns is not None:
+            c.sensitive_patterns = _parse_pattern_list(raw_sensitive_patterns)
+            c.sensitive_patterns_source = "env"
+        c.large_output_externalization_enabled = _parse_bool_env(
+            "LCM_LARGE_OUTPUT_EXTERNALIZATION_ENABLED",
+            c.large_output_externalization_enabled,
+        )
+        c.large_output_externalization_threshold_chars = _int(
+            "LCM_LARGE_OUTPUT_EXTERNALIZATION_THRESHOLD_CHARS",
+            c.large_output_externalization_threshold_chars,
+        )
+        c.large_output_externalization_path = _str(
+            "LCM_LARGE_OUTPUT_EXTERNALIZATION_PATH",
+            c.large_output_externalization_path,
+        )
+        c.large_output_transcript_gc_enabled = _parse_bool_env(
+            "LCM_LARGE_OUTPUT_TRANSCRIPT_GC_ENABLED",
+            c.large_output_transcript_gc_enabled,
+        )
+        c.summary_model = _str("LCM_SUMMARY_MODEL", c.summary_model)
+        raw_summary_fallback_models = os.environ.get("LCM_SUMMARY_FALLBACK_MODELS")
+        if raw_summary_fallback_models is not None:
+            c.summary_fallback_models = _parse_pattern_list(raw_summary_fallback_models)
+        c.summary_circuit_breaker_failure_threshold = _int(
+            "LCM_SUMMARY_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
+            c.summary_circuit_breaker_failure_threshold,
+        )
+        c.summary_circuit_breaker_cooldown_seconds = _int(
+            "LCM_SUMMARY_CIRCUIT_BREAKER_COOLDOWN_SECONDS",
+            c.summary_circuit_breaker_cooldown_seconds,
+        )
         c.summary_spend_max_calls, source, warning = _parse_int_env_with_source(
             "LCM_SUMMARY_SPEND_MAX_CALLS",
             c.summary_spend_max_calls,

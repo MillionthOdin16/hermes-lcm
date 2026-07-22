@@ -533,6 +533,7 @@ def _status_text(engine) -> str:
         f"context_threshold_source: {status.get('context_threshold_source', config_sources.get('context_threshold', 'manual_or_default'))}",
         f"context_threshold_autoraised: {status.get('context_threshold_autoraised') or '(none)'}",
         f"threshold_tokens: {engine.threshold_tokens if session_bound else '(uninitialized)'}",
+        f"ineffective_compression_count: {status.get('ineffective_compression_count', 0)}",
         f"cache_metrics_available: {_fmt_bool(status.get('cache_metrics_available'))}",
         f"last_input_tokens: {status.get('last_input_tokens', 0)}",
         f"last_output_tokens: {status.get('last_output_tokens', 0)}",
@@ -1480,6 +1481,34 @@ def _doctor_text(engine) -> str:
         recommended_actions.append("create a safety snapshot first with `/lcm backup`")
     else:
         observations.append("cleanup_candidates: none")
+
+    orphan_lifecycle_count = 0
+    if lifecycle_conn is not None:
+        try:
+            orphan_lifecycle_count = int(lifecycle_conn.execute(
+                """
+                SELECT COUNT(*) FROM lcm_lifecycle_state
+                WHERE conversation_id NOT IN (SELECT DISTINCT session_id FROM messages)
+                  AND conversation_id NOT IN (SELECT DISTINCT session_id FROM summary_nodes)
+                  AND (current_session_id IS NULL OR current_session_id NOT IN
+                       (SELECT DISTINCT session_id FROM messages))
+                  AND (current_session_id IS NULL OR current_session_id NOT IN
+                       (SELECT DISTINCT session_id FROM summary_nodes))
+                  AND (last_finalized_session_id IS NULL OR last_finalized_session_id NOT IN
+                       (SELECT DISTINCT session_id FROM messages))
+                  AND (last_finalized_session_id IS NULL OR last_finalized_session_id NOT IN
+                       (SELECT DISTINCT session_id FROM summary_nodes))
+                """
+            ).fetchone()[0])
+        except Exception:
+            issues.append("orphan_lifecycle_check")
+    if orphan_lifecycle_count > 0:
+        observations.append(
+            f"orphan_lifecycle_rows: {orphan_lifecycle_count} lifecycle row(s) reference no messages or summary_nodes"
+        )
+        recommended_actions.append(
+            "orphan lifecycle rows are safe to delete — run the triple-guard DELETE to clean up"
+        )
 
     if missing_externalized_refs:
         issues.append("payload_storage")

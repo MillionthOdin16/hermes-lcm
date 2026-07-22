@@ -737,17 +737,17 @@ class LCMConfig:
             c.codex_gpt55_autoraise_enabled
         )
         _record("codex_gpt55_autoraise_enabled", source)
-        c.incremental_max_depth = _int("LCM_INCREMENTAL_MAX_DEPTH", c.incremental_max_depth)
-        c.condensation_fanin = _int("LCM_CONDENSATION_FANIN", c.condensation_fanin)
+        c.incremental_max_depth = _parse_int_env("LCM_INCREMENTAL_MAX_DEPTH", c.incremental_max_depth)
+        c.condensation_fanin = _parse_int_env("LCM_CONDENSATION_FANIN", c.condensation_fanin)
         c.dynamic_leaf_chunk_enabled = _parse_bool_env(
             "LCM_DYNAMIC_LEAF_CHUNK_ENABLED", c.dynamic_leaf_chunk_enabled
         )
-        c.dynamic_leaf_chunk_max = _int("LCM_DYNAMIC_LEAF_CHUNK_MAX", c.dynamic_leaf_chunk_max)
+        c.dynamic_leaf_chunk_max = _parse_int_env("LCM_DYNAMIC_LEAF_CHUNK_MAX", c.dynamic_leaf_chunk_max)
         c.cache_friendly_condensation_enabled = _parse_bool_env(
             "LCM_CACHE_FRIENDLY_CONDENSATION_ENABLED",
             c.cache_friendly_condensation_enabled,
         )
-        c.cache_friendly_min_debt_groups = _int(
+        c.cache_friendly_min_debt_groups = _parse_int_env(
             "LCM_CACHE_FRIENDLY_MIN_DEBT_GROUPS",
             c.cache_friendly_min_debt_groups,
         )
@@ -755,27 +755,27 @@ class LCMConfig:
             "LCM_DEFERRED_MAINTENANCE_ENABLED",
             c.deferred_maintenance_enabled,
         )
-        c.deferred_maintenance_max_passes = _int(
+        c.deferred_maintenance_max_passes = _parse_int_env(
             "LCM_DEFERRED_MAINTENANCE_MAX_PASSES",
             c.deferred_maintenance_max_passes,
         )
         # Primary source: compression.threshold_tokens_cap in config.yaml.
         # LCM_THRESHOLD_TOKENS_CAP env var overrides if set.
-        c.threshold_tokens_cap = _int(
+        c.threshold_tokens_cap = _parse_int_env(
             "LCM_THRESHOLD_TOKENS_CAP",
             _hermes_threshold_tokens_cap(c.threshold_tokens_cap),
         )
-        c.critical_budget_pressure_ratio = _float(
+        c.critical_budget_pressure_ratio = _parse_float_env(
             "LCM_CRITICAL_BUDGET_PRESSURE_RATIO",
             c.critical_budget_pressure_ratio,
         )
-        c.l3_truncate_tokens = _int("LCM_L3_TRUNCATE_TOKENS", c.l3_truncate_tokens)
-        c.max_assembly_tokens = _int("LCM_MAX_ASSEMBLY_TOKENS", c.max_assembly_tokens)
-        c.reserve_tokens_floor = _int("LCM_RESERVE_TOKENS_FLOOR", c.reserve_tokens_floor)
-        c.custom_instructions = _str("LCM_CUSTOM_INSTRUCTIONS", c.custom_instructions)
+        c.l3_truncate_tokens = _parse_int_env("LCM_L3_TRUNCATE_TOKENS", c.l3_truncate_tokens)
+        c.max_assembly_tokens = _parse_int_env("LCM_MAX_ASSEMBLY_TOKENS", c.max_assembly_tokens)
+        c.reserve_tokens_floor = _parse_int_env("LCM_RESERVE_TOKENS_FLOOR", c.reserve_tokens_floor)
+        c.custom_instructions = _parse_str_env("LCM_CUSTOM_INSTRUCTIONS", c.custom_instructions)
         c.extraction_enabled = _parse_bool_env("LCM_EXTRACTION_ENABLED", c.extraction_enabled)
-        c.extraction_model = _str("LCM_EXTRACTION_MODEL", c.extraction_model)
-        c.extraction_output_path = _str("LCM_EXTRACTION_OUTPUT_PATH", c.extraction_output_path)
+        c.extraction_model = _parse_str_env("LCM_EXTRACTION_MODEL", c.extraction_model)
+        c.extraction_output_path = _parse_str_env("LCM_EXTRACTION_OUTPUT_PATH", c.extraction_output_path)
         c.sensitive_patterns_enabled = _parse_bool_env(
             "LCM_SENSITIVE_PATTERNS_ENABLED",
             c.sensitive_patterns_enabled,
@@ -788,11 +788,11 @@ class LCMConfig:
             "LCM_LARGE_OUTPUT_EXTERNALIZATION_ENABLED",
             c.large_output_externalization_enabled,
         )
-        c.large_output_externalization_threshold_chars = _int(
+        c.large_output_externalization_threshold_chars = _parse_int_env(
             "LCM_LARGE_OUTPUT_EXTERNALIZATION_THRESHOLD_CHARS",
             c.large_output_externalization_threshold_chars,
         )
-        c.large_output_externalization_path = _str(
+        c.large_output_externalization_path = _parse_str_env(
             "LCM_LARGE_OUTPUT_EXTERNALIZATION_PATH",
             c.large_output_externalization_path,
         )
@@ -800,15 +800,15 @@ class LCMConfig:
             "LCM_LARGE_OUTPUT_TRANSCRIPT_GC_ENABLED",
             c.large_output_transcript_gc_enabled,
         )
-        c.summary_model = _str("LCM_SUMMARY_MODEL", c.summary_model)
+        c.summary_model = _parse_str_env("LCM_SUMMARY_MODEL", c.summary_model)
         raw_summary_fallback_models = os.environ.get("LCM_SUMMARY_FALLBACK_MODELS")
         if raw_summary_fallback_models is not None:
             c.summary_fallback_models = _parse_pattern_list(raw_summary_fallback_models)
-        c.summary_circuit_breaker_failure_threshold = _int(
+        c.summary_circuit_breaker_failure_threshold = _parse_int_env(
             "LCM_SUMMARY_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
             c.summary_circuit_breaker_failure_threshold,
         )
-        c.summary_circuit_breaker_cooldown_seconds = _int(
+        c.summary_circuit_breaker_cooldown_seconds = _parse_int_env(
             "LCM_SUMMARY_CIRCUIT_BREAKER_COOLDOWN_SECONDS",
             c.summary_circuit_breaker_cooldown_seconds,
         )

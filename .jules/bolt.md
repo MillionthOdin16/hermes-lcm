@@ -1,0 +1,3 @@
+## 2026-03-02 - SQLite Optimization Pattern
+**Learning:** SQLite's `executemany()` dramatically speeds up batch inserts, but `lastrowid` is unreliable after execution. Furthermore, generating parameters with a single timestamp inside `executemany` would break timestamp uniqueness constraints required by tests (like `test_append_batch_timestamps_are_unique_per_row`).
+**Action:** When using `executemany()` for batch inserts on an AUTOINCREMENT column, compute the sequence of IDs manually by querying `SELECT last_insert_rowid()` afterwards and counting backward. Ensure timestamps are given unique microsecond offsets manually in Python when creating the `params` array.

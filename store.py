@@ -411,7 +411,7 @@ class MessageStore:
 
         with self._write_lock, self._conn:
             # ⚡ Bolt Optimization: Use executemany for faster batch insertion
-            cur = self._conn.executemany(
+            self._conn.executemany(
                 """INSERT INTO messages
                    (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
                     tool_name, timestamp, token_estimate, pinned)

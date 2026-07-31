@@ -1,0 +1,3 @@
+## 2024-05-15 - [Avoid repeated lowercasing in search ranking loop]
+**Learning:** In the LIKE fallback search (and directness scoring) in `search_query.py` and `store.py`/`dag.py`, the search iterations repeatedly lowercase the same strings for every term check. Given that we loop over results and then over terms, `haystack.lower()` is called for each term inside the row loop in the unoptimized `count_term_matches`.
+**Action:** Optimize string matching in search fallbacks to pre-lowercase the document string once per row, and use it against pre-lowercased terms, avoiding repeated `.lower()` allocations in the inner loop.

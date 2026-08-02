@@ -1,0 +1,3 @@
+## 2026-02-18 - [Batch Insert Auto-increment Resolution]
+**Learning:** Python's `sqlite3` driver resets `cursor.lastrowid` to `None` after `executemany()`. The conventional method of accessing generated IDs fails for batch operations without a `RETURNING` clause, which can break expectations when shifting from looped single-inserts to `executemany` for performance optimizations.
+**Action:** Always follow batch `executemany` inserts with a direct `SELECT last_insert_rowid()` call on the connection. Calculate backward using the length of the parameters batch to determine the sequence of generated IDs correctly.

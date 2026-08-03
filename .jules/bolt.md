@@ -1,0 +1,3 @@
+## 2026-08-03 - [Optimize append_batch using executemany]
+**Learning:** SQLite's Python driver sets `cur.lastrowid` to `None` after `executemany()`. The codebase enforces a regression constraint where each message row must receive a strictly unique timestamp, meaning `time.time()` needs a minor offset when building batch parameters.
+**Action:** To optimize batch inserts and retrieve auto-incremented IDs without a `RETURNING` clause, execute `SELECT last_insert_rowid()` immediately after `executemany` to get the last inserted ID, then calculate the preceding IDs backward using the batch length. To ensure unique timestamps per row, add `(i * 1e-6)` to `time.time()` during parameter generation.

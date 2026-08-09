@@ -465,35 +465,45 @@ class MessageStore:
 
         ids = []
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
+            params = []
+            for i, (msg, est) in enumerate(zip(messages, token_estimates)):
                 tc = msg.get("tool_calls")
                 tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
+                ts = time.time() + (i * 1e-6)
                 observed_at = _normalize_observed_at(msg.get("timestamp"))
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned, ingested_at,
-                        observed_at, observed_at_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                        ts,
-                        observed_at,
-                        "host_message_timestamp" if observed_at is not None else None,
-                    ),
-                )
-                ids.append(cur.lastrowid)
+
+                params.append((
+                    session_id,
+                    _normalize_source_value(source),
+                    _normalize_conversation_id_value(conversation_id),
+                    msg.get("role", "unknown"),
+                    _normalize_content_value(msg.get("content")),
+                    msg.get("tool_call_id"),
+                    tc_json,
+                    msg.get("tool_name"),
+                    ts,
+                    est,
+                    0,
+                    ts,
+                    observed_at,
+                    "host_message_timestamp" if observed_at is not None else None,
+                ))
+
+            self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned, ingested_at,
+                    observed_at, observed_at_source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params
+            )
+
+            if params:
+                last_id = self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                count = len(params)
+                start_id = last_id - count + 1
+                ids = list(range(start_id, last_id + 1))
+
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:
@@ -1480,16 +1490,25 @@ class MessageStore:
         """Convert a sqlite3 row to a dict."""
         if row is None:
             return {}
-        cols = [
-            "store_id", "session_id", "source", "role", "content", "tool_call_id",
-            "tool_calls", "tool_name", "timestamp", "token_estimate", "pinned", "conversation_id",
-            "ingested_at", "observed_at", "observed_at_source",
-        ]
-        d = dict(zip(cols, row[:len(cols)]))
-        d["source"] = _normalize_source_value(d.get("source"))
-        d["conversation_id"] = _normalize_conversation_id_value(d.get("conversation_id"))
+        d = {
+            "store_id": row[0],
+            "session_id": row[1],
+            "source": _normalize_source_value(row[2]),
+            "role": row[3],
+            "content": row[4],
+            "tool_call_id": row[5],
+            "tool_calls": row[6],
+            "tool_name": row[7],
+            "timestamp": row[8],
+            "token_estimate": row[9],
+            "pinned": row[10],
+            "conversation_id": _normalize_conversation_id_value(row[11]),
+            "ingested_at": row[12],
+            "observed_at": row[13],
+            "observed_at_source": row[14],
+        }
         # Deserialize tool_calls JSON
-        if d.get("tool_calls"):
+        if d["tool_calls"]:
             try:
                 d["tool_calls"] = json.loads(d["tool_calls"])
             except (json.JSONDecodeError, TypeError):

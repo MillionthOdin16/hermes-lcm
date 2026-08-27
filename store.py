@@ -460,40 +460,59 @@ class MessageStore:
         stubs. Direct callers should use ``append_batch`` so storage-boundary
         payload protection cannot be bypassed accidentally.
         """
+        if not messages:
+            return []
+
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
-        ids = []
+        batch_values = []
+        norm_source = _normalize_source_value(source)
+        norm_conversation_id = _normalize_conversation_id_value(conversation_id)
+
+        base_ts = time.time()
+        for i, (msg, est) in enumerate(zip(messages, token_estimates)):
+            tc = msg.get("tool_calls")
+            tc_json = json.dumps(tc) if tc else None
+            # Add microsecond offset to ensure strictly unique timestamps
+            ts = base_ts + (i * 1e-6)
+            observed_at = _normalize_observed_at(msg.get("timestamp"))
+            batch_values.append((
+                session_id,
+                norm_source,
+                norm_conversation_id,
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                tc_json,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+                ts,
+                observed_at,
+                "host_message_timestamp" if observed_at is not None else None,
+            ))
+
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                observed_at = _normalize_observed_at(msg.get("timestamp"))
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned, ingested_at,
-                        observed_at, observed_at_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                        ts,
-                        observed_at,
-                        "host_message_timestamp" if observed_at is not None else None,
-                    ),
-                )
-                ids.append(cur.lastrowid)
+            self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned, ingested_at,
+                    observed_at, observed_at_source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                batch_values
+            )
+            # Fetch the last inserted ID. FTS insert triggers don't overwrite this.
+            cur = self._conn.execute("SELECT last_insert_rowid()")
+            last_id = cur.fetchone()[0]
+
+            # Since SQLite auto-increments sequentially in the transaction,
+            # calculate the inserted IDs backward from the last_id.
+            num_inserted = len(batch_values)
+            first_id = last_id - num_inserted + 1
+            ids = list(range(first_id, last_id + 1))
+
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:

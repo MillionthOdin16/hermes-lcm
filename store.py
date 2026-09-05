@@ -461,41 +461,51 @@ class MessageStore:
         stubs. Direct callers should use ``append_batch`` so storage-boundary
         payload protection cannot be bypassed accidentally.
         """
+        if not messages:
+            return []
+
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
-        ids = []
+        batch_args = []
+        base_ts = time.time()
+        for i, (msg, est) in enumerate(zip(messages, token_estimates)):
+            tc = msg.get("tool_calls")
+            tc_json = json.dumps(tc) if tc else None
+            # ⚡ Bolt: Add microsecond offset to preserve uniqueness per row as required by tests
+            ts = base_ts + (i * 1e-6)
+            observed_at = _normalize_observed_at(msg.get("timestamp"))
+            batch_args.append((
+                session_id,
+                _normalize_source_value(source),
+                _normalize_conversation_id_value(conversation_id),
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                tc_json,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+                ts,
+                observed_at,
+                "host_message_timestamp" if observed_at is not None else None,
+            ))
+
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                observed_at = _normalize_observed_at(msg.get("timestamp"))
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned, ingested_at,
-                        observed_at, observed_at_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                        ts,
-                        observed_at,
-                        "host_message_timestamp" if observed_at is not None else None,
-                    ),
-                )
-                ids.append(cur.lastrowid)
-        return ids
+            # ⚡ Bolt: Use executemany for batch inserts to improve insertion performance
+            self._conn.executemany(
+                """INSERT INTO messages
+                   (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                    tool_name, timestamp, token_estimate, pinned, ingested_at,
+                    observed_at, observed_at_source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                batch_args,
+            )
+            # ⚡ Bolt: Retrieve last auto-incremented ID and calculate preceding IDs backward
+            last_id = self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            count = len(batch_args)
+            return list(range(last_id - count + 1, last_id + 1))
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:
         """Move all persisted messages from one session_id to another."""

@@ -37,7 +37,6 @@ from .search_query import (
     compute_like_fallback_fetch_limit,
     compute_search_fetch_limit,
     contains_risky_fts_ascii,
-    count_term_matches,
     escape_like,
     extract_quoted_phrases,
     extract_search_terms,

@@ -264,15 +264,24 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, is_lower: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
+    # ⚡ Bolt: Fast path to bypass redundant .lower() calls when data is already normalized
+    if is_lower:
+        return haystack.count(needle)
     return haystack.lower().count(needle.lower())
 
 
-def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None) -> float:
+def compute_directness_score(
+    text: str,
+    terms: List[str],
+    phrases: List[str] | None = None,
+    lowered_content: str | None = None,
+    lowered_terms: List[str] | None = None
+) -> float:
     content = text or ""
     if not content:
         return 0.0
@@ -282,8 +291,12 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
     normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
-    for term in terms:
-        matches = count_term_matches(content, term)
+
+    _lowered_content = lowered_content if lowered_content is not None else content.lower()
+    _lowered_terms = lowered_terms if lowered_terms is not None else [t.lower() for t in terms]
+
+    for term, lowered_term in zip(terms, _lowered_terms):
+        matches = count_term_matches(_lowered_content, lowered_term, is_lower=True)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
@@ -292,7 +305,7 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
+    lowered = _lowered_content
     for phrase in phrases or []:
         if phrase and phrase.lower() in lowered:
             phrase_hits += 1

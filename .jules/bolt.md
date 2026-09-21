@@ -1,0 +1,3 @@
+## 2026-09-21 - [Optimize String Case Conversions in Hot Loops]
+**Learning:** Repetitive string operations like `.lower()` inside hot loops (e.g., search/ranking loops in `dag.py`, `store.py`, `search_query.py`) create severe CPU bottlenecks. For example, `compute_directness_score` lowered the text content multiple times for each search term in the query.
+**Action:** Pre-process invariants (like lowercasing candidate text and search terms) exactly once outside the loops. Update shared utility functions like `count_term_matches` to accept an optional `is_lowercased` flag to bypass redundant formatting without breaking existing API compatibility.

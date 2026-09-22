@@ -39,7 +39,6 @@ from .search_query import (
     compute_like_fallback_fetch_limit,
     compute_search_fetch_limit,
     contains_risky_fts_ascii,
-    count_term_matches,
     escape_like,
     extract_quoted_phrases,
     extract_search_terms,
@@ -670,6 +669,8 @@ class SummaryDAG:
         scanned_rows = 0
         nodes: list[SummaryNode] = []
         source_match_cache: dict[int, bool] = {}
+        lowered_terms = [t.lower() for t in terms if t]
+
         while True:
             with self._db_lock:
                 rows = self._conn.execute(
@@ -683,10 +684,15 @@ class SummaryDAG:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
-                score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
-                )
+
+                lowered_summary = (node.summary or "").lower()
+                score = 0
+                for lowered_term in lowered_terms:
+                    matches = lowered_summary.count(lowered_term)
+                    if collapse_risky_repeats and matches > 1:
+                        matches = 1
+                    score += matches
+
                 if score <= 0:
                     continue
                 node.search_rank = -float(score)

@@ -39,7 +39,6 @@ from .search_query import (
     compute_like_fallback_fetch_limit,
     compute_search_fetch_limit,
     contains_risky_fts_ascii,
-    count_term_matches,
     escape_like,
     extract_quoted_phrases,
     extract_search_terms,
@@ -1481,6 +1480,7 @@ class MessageStore:
         order_by = ""
         order_args: list[Any] = []
         role_bias = "CASE role WHEN 'user' THEN 0 WHEN 'assistant' THEN 1 WHEN 'tool' THEN 2 ELSE 1 END"
+        lowered_terms = [t.lower() for t in terms if t]
 
         def count_expr(term: str) -> tuple[str, list[Any]]:
             return (
@@ -1553,10 +1553,15 @@ class MessageStore:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
-                score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
-                )
+                lowered_content = content.lower()
+
+                score = 0
+                for lowered_term in lowered_terms:
+                    matches = lowered_content.count(lowered_term)
+                    if collapse_risky_repeats and matches > 1:
+                        matches = 1
+                    score += matches
+
                 if score <= 0:
                     continue
                 result["search_rank"] = -float(score)

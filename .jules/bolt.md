@@ -1,0 +1,3 @@
+## 2026-10-24 - Avoid `.lower()` in hot loops
+**Learning:** Repetitive string operations (like `.lower()`) and function calls inside hot loops (e.g., search/ranking loops in `dag.py`, `store.py`, `search_query.py`) create severe CPU bottlenecks. `count_term_matches` does `.lower()` on `haystack` (which is `content` or `node.summary`) repeatedly for every term.
+**Action:** Pre-process invariants (lowercase candidate text and search terms) outside the loops. Update `count_term_matches` logic to assume or handle pre-processed strings where appropriate, or update the loops to do the string operations themselves.

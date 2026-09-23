@@ -1,0 +1,3 @@
+## 2026-09-23 - Avoid redundant lowercasing in hot search loops
+**Learning:** Repetitive string operations (`.lower()`) inside loops for search query ranking in `dag.py`, `store.py`, and `search_query.py` create a significant CPU bottleneck. Every document/node evaluated was re-lowercasing the search terms, and the utility `count_term_matches` was re-lowercasing the text for every term.
+**Action:** Pre-process invariants (lowercase candidate text and search terms) outside the inner loops and inline or adjust counting logic where applicable. Avoid modifying `count_term_matches` utility signature to prevent breaking external callers unless we pass pre-processed strings directly.

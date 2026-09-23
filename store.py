@@ -39,7 +39,6 @@ from .search_query import (
     compute_like_fallback_fetch_limit,
     compute_search_fetch_limit,
     contains_risky_fts_ascii,
-    count_term_matches,
     escape_like,
     extract_quoted_phrases,
     extract_search_terms,
@@ -1549,14 +1548,22 @@ class MessageStore:
                 f"({directness_expr}) DESC, store_id DESC"
             )
 
+        # Performance: Pre-calculate lowercased terms to avoid repeated .lower() in the hot loop
+        terms_lower = [term.lower() for term in terms if term]
+
         def add_rows(rows: list[sqlite3.Row]) -> None:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
-                score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
-                )
+                content_lower = content.lower()
+
+                score = 0
+                for term_lower in terms_lower:
+                    matches = content_lower.count(term_lower)
+                    if collapse_risky_repeats:
+                        matches = min(matches, 1)
+                    score += matches
+
                 if score <= 0:
                     continue
                 result["search_rank"] = -float(score)

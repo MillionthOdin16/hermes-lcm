@@ -277,13 +277,19 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
     if not content:
         return 0.0
 
+    # Performance: Pre-calculate lowercased content to avoid repeated .lower() in the hot loop
+    lowered = content.lower()
+
     unique_hits = 0
     total_hits = 0
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
     normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
     for term in terms:
-        matches = count_term_matches(content, term)
+        if not term:
+            continue
+        term_lower = term.lower()
+        matches = lowered.count(term_lower)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
@@ -292,7 +298,6 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
     for phrase in phrases or []:
         if phrase and phrase.lower() in lowered:
             phrase_hits += 1

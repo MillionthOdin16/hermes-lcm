@@ -1,0 +1,3 @@
+## 2026-10-27 - SQLite Batch Insertion Optimization
+**Learning:** Python's `sqlite3` does not natively return all inserted IDs for `executemany()`. However, `last_insert_rowid()` can safely be used after `executemany()` to get the last auto-incremented ID. Crucially, AFTER INSERT triggers on main tables (like `msg_fts_insert` in this codebase) do not override the `last_insert_rowid()` result.
+**Action:** Use `executemany()` for batched inserts and calculate IDs backwards `range(last_id - len(batch) + 1, last_id + 1)`. Also ensure each batched row has a unique timestamp by applying a microsecond offset `time.time() + (i * 1e-6)` to avoid breaking uniqueness constraints.

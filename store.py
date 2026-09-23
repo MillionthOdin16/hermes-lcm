@@ -530,40 +530,57 @@ class MessageStore:
         stubs. Direct callers should use ``append_batch`` so storage-boundary
         payload protection cannot be bypassed accidentally.
         """
+        if not messages:
+            return []
+
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
+        all_params = []
+        base_ts = time.time()
+        for i, (msg, est) in enumerate(zip(messages, token_estimates)):
+            tc = msg.get("tool_calls")
+            tc_json = json.dumps(tc) if tc else None
+            # Add microsecond offsets to guarantee strictly unique per-row timestamps
+            ts = base_ts + (i * 1e-6)
+            observed_at = _normalize_observed_at(msg.get("timestamp"))
+            all_params.extend([
+                session_id,
+                _normalize_source_value(source),
+                _normalize_conversation_id_value(conversation_id),
+                msg.get("role", "unknown"),
+                _normalize_content_value(msg.get("content")),
+                msg.get("tool_call_id"),
+                tc_json,
+                msg.get("tool_name"),
+                ts,
+                est,
+                0,
+                ts,
+                observed_at,
+                "host_message_timestamp" if observed_at is not None else None,
+            ])
+
+        chunk_size = 71  # 71 messages * 14 columns = 994 parameters <= SQLite 999 max
+        params_per_message = 14
+
         ids = []
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                observed_at = _normalize_observed_at(msg.get("timestamp"))
+            for offset in range(0, len(messages), chunk_size):
+                chunk_messages = min(chunk_size, len(messages) - offset)
+                chunk_params = all_params[offset * params_per_message : (offset + chunk_messages) * params_per_message]
+
+                values_clause = ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"] * chunk_messages)
+
                 cur = self._conn.execute(
-                    """INSERT INTO messages
+                    f"""INSERT INTO messages
                        (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
                         tool_name, timestamp, token_estimate, pinned, ingested_at,
                         observed_at, observed_at_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        session_id,
-                        _normalize_source_value(source),
-                        _normalize_conversation_id_value(conversation_id),
-                        msg.get("role", "unknown"),
-                        _normalize_content_value(msg.get("content")),
-                        msg.get("tool_call_id"),
-                        tc_json,
-                        msg.get("tool_name"),
-                        ts,
-                        est,
-                        0,
-                        ts,
-                        observed_at,
-                        "host_message_timestamp" if observed_at is not None else None,
-                    ),
+                       VALUES {values_clause} RETURNING store_id""",
+                    chunk_params
                 )
-                ids.append(cur.lastrowid)
+                ids.extend([row[0] for row in cur.fetchall()])
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:

@@ -1,0 +1,5 @@
+## 2026-03-09 - SQLite `executemany` with Auto-Increment Backwards Calculation
+
+**Learning:** When optimizing batch inserts with SQLite using Python's `sqlite3`, using `executemany` yields a significant performance boost over a loop of `execute` statements (avoids Python loop overhead). However, `cur.lastrowid` is set to `None` after `executemany`, making it difficult to get the auto-incremented IDs inserted for the batch. We also observed that the `AFTER INSERT` triggers on main tables (like `msg_fts_insert`) do not interfere with `last_insert_rowid()`.
+
+**Action:** To get the IDs of the batch, immediately execute `SELECT last_insert_rowid()` right after `executemany` to get the final auto-incremented ID of the main table. From this ID, calculate the prior IDs backward by subtracting the batch length (`last_insert_rowid() - len(batch) + 1` up to `last_insert_rowid()`). Furthermore, ensure timestamp uniqueness for tests expecting unique batch timestamps by adding a microsecond offset `+ (i * 1e-6)` during batch setup.

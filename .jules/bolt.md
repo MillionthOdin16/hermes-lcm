@@ -1,0 +1,3 @@
+## 2026-10-27 - SQLite Optimization Pattern: executemany and auto-incremented IDs
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. To retrieve auto-incremented IDs for batch inserts without a `RETURNING` clause, execute `SELECT last_insert_rowid()` immediately after the batch insert to get the last inserted ID, then calculate the preceding inserted IDs backward using `len(batch)`. Also, AFTER INSERT triggers on main tables do not interfere with the connection's `last_insert_rowid()` result.
+**Action:** When refactoring N+1 inserts to use `executemany()`, use `SELECT last_insert_rowid()` to calculate the auto-generated IDs efficiently and safely in SQLite.

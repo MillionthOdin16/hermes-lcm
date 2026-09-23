@@ -1,0 +1,3 @@
+## 2026-09-08 - [SQLite Batch Insert Optimization]
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. The codebase enforces a regression constraint where each message row must receive a strictly unique timestamp, requiring an offset when generating batch parameters.
+**Action:** When batch inserting messages in `store.py` using `executemany`, generate unique timestamps by adding an offset `(i * 1e-6)`. To retrieve auto-incremented IDs, execute `SELECT last_insert_rowid()` immediately after the batch insert and calculate the preceding inserted IDs backward using the length of the batch.

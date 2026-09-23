@@ -670,6 +670,10 @@ class SummaryDAG:
         scanned_rows = 0
         nodes: list[SummaryNode] = []
         source_match_cache: dict[int, bool] = {}
+
+        # ⚡ Bolt: Precompute loop invariants to avoid repetitive lower() calls in hot path.
+        # Reduces overhead by avoiding redundant string processing during loop.
+        lowered_terms = [t.lower() for t in terms]
         while True:
             with self._db_lock:
                 rows = self._conn.execute(
@@ -683,14 +687,21 @@ class SummaryDAG:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
+
+                # ⚡ Bolt: Precompute lowercase content once per node
+                lowered_summary = node.summary.lower() if node.summary else ""
+
                 score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
+                    min(count_term_matches(lowered_summary, lowered_term, is_lower=True), 1) if collapse_risky_repeats else count_term_matches(lowered_summary, lowered_term, is_lower=True)
+                    for lowered_term in lowered_terms
                 )
                 if score <= 0:
                     continue
                 node.search_rank = -float(score)
-                node.search_directness = compute_directness_score(node.summary, terms, phrases)
+                node.search_directness = compute_directness_score(
+                    node.summary, terms, phrases,
+                    lowered_content=lowered_summary, lowered_terms=lowered_terms
+                )
                 nodes.append(node)
 
             nodes.sort(key=lambda node: _fallback_result_sort_key(node, sort))

@@ -1,0 +1,3 @@
+## 2026-09-02 - SQLite executemany ID Retrieval and Timestamps
+**Learning:** Python's `sqlite3` driver sets `cur.lastrowid` to `None` after `executemany()`. Also, the codebase requires strictly unique timestamps per row for date-based queries.
+**Action:** For batch inserts, use `executemany()` to improve performance (batching inserts is significantly faster than executing in a loop). Generate unique timestamps by adding a minor offset `(i * 1e-6)` in Python before inserting. After `executemany()`, immediately execute `SELECT last_insert_rowid()` to retrieve the last auto-incremented ID, then calculate the preceding IDs backward using `cur.rowcount` to return the full list of inserted IDs.

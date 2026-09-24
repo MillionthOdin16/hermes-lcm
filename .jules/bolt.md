@@ -1,0 +1,3 @@
+## 2026-09-24 - Optimization of hot string operations during fallback search ranking
+**Learning:** Repetitive string operations, such as `.lower()`, and the associated multiple function calls inside fallback search ranking loops (e.g., `_search_nodes_fallback` and `_search_messages_fallback_impl` which process search term matches for thousands of rows) create severe CPU bottlenecks in this codebase's architecture.
+**Action:** Lift these invariants out of the innermost loops by pre-lowering candidate texts (e.g., `content.lower()`) and query terms (`[t.lower() for t in terms]`) prior to the iteration. Pass the pre-processed strings down to utilities (e.g., `count_term_matches(..., is_lowered=True)`) to skip redundant conversions and maximize iteration speed.

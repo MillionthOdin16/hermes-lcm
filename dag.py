@@ -670,6 +670,7 @@ class SummaryDAG:
         scanned_rows = 0
         nodes: list[SummaryNode] = []
         source_match_cache: dict[int, bool] = {}
+        lowered_terms = [t.lower() for t in terms]
         while True:
             with self._db_lock:
                 rows = self._conn.execute(
@@ -683,9 +684,11 @@ class SummaryDAG:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
+
+                lowered_summary = (node.summary or "").lower()
                 score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
+                    min(count_term_matches(lowered_summary, term, is_lowered=True), 1) if collapse_risky_repeats else count_term_matches(lowered_summary, term, is_lowered=True)
+                    for term in lowered_terms
                 )
                 if score <= 0:
                     continue

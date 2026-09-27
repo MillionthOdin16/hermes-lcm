@@ -679,14 +679,24 @@ class SummaryDAG:
                     [*base_args, fetch_limit, offset],
                 ).fetchall()
             scanned_rows += len(rows)
+
+            lowered_terms = [term.lower() for term in terms]
+
             for row in rows:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
-                score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
-                )
+
+                lowered_summary = (node.summary or "").lower()
+
+                score = 0
+                for lowered_term in lowered_terms:
+                    matches = count_term_matches(lowered_summary, lowered_term, is_pre_lowered=True)
+                    if collapse_risky_repeats:
+                        score += min(matches, 1)
+                    else:
+                        score += matches
+
                 if score <= 0:
                     continue
                 node.search_rank = -float(score)

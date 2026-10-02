@@ -1,0 +1,3 @@
+## 2026-10-02 - Hoist String Methods Out of Search Loops
+**Learning:** Repetitive string allocations via methods like `.lower()` inside nested loops for search query ranking (e.g., `count_term_matches`) create massive CPU bottlenecks in Python. Using list comprehensions to pre-process conditions outside the loop is dramatically faster than allocating inside.
+**Action:** When working on search or scoring algorithms, always inspect the inner loop for string formatting, `.lower()`, or `.strip()` calls, and pre-compute these normalized inputs ahead of time. Update shared utility signatures (like `count_term_matches(text_lower, term_lower)`) to expect already processed strings rather than repeating the work.

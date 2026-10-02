@@ -264,12 +264,12 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
-    haystack = (text or "")
-    needle = (term or "")
+def count_term_matches(text_lower: str, term_lower: str) -> int:
+    haystack = (text_lower or "")
+    needle = (term_lower or "")
     if not haystack or not needle:
         return 0
-    return haystack.lower().count(needle.lower())
+    return haystack.count(needle)
 
 
 def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None) -> float:
@@ -277,24 +277,25 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
     if not content:
         return 0.0
 
+    lowered_content = content.lower()
     unique_hits = 0
     total_hits = 0
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
     normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
     for term in terms:
-        matches = count_term_matches(content, term)
+        term_lower = (term or "").lower()
+        matches = count_term_matches(lowered_content, term_lower)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
-            if term.strip().lower() not in normalized_phrases:
+            if term_lower.strip() not in normalized_phrases:
                 non_phrase_unique_hits += 1
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
     for phrase in phrases or []:
-        if phrase and phrase.lower() in lowered:
+        if phrase and phrase.lower() in lowered_content:
             phrase_hits += 1
 
     repetition_penalty = max(0, total_hits - unique_hits)
@@ -310,10 +311,10 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
             normalized_phrase = (phrase or "").strip().lower()
             if not normalized_phrase:
                 continue
-            phrase_occurrences = lowered.count(normalized_phrase)
+            phrase_occurrences = lowered_content.count(normalized_phrase)
             if phrase_occurrences <= 1:
                 continue
-            segments = re.split(re.escape(normalized_phrase), lowered)
+            segments = re.split(re.escape(normalized_phrase), lowered_content)
             gap_unique_counts = []
             for segment in segments:
                 segment_tokens = [

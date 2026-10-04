@@ -1,0 +1,3 @@
+## 2026-XX-XX - Pre-processing text for counting matches in search and retrieval
+**Learning:** Repetitive string operations inside hot loops create severe CPU bottlenecks. Specifically, `count_term_matches(text, term)` is repeatedly called inside a loop over fetched db rows for multiple search terms in `store.py` and `dag.py`. In `count_term_matches`, we're repeatedly calling `.lower()` on the target string (`text` or `content` or `node.summary`) and the search terms, which produces unnecessary memory allocations and redundant calculations.
+**Action:** Pre-process invariants (lowercase candidate text and search terms) outside the loops, or carefully update the utility's implementation to avoid redundant `.lower()` calls inside loops.

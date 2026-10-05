@@ -264,12 +264,16 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, text_is_lower: bool = False, term_is_lower: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
-    return haystack.lower().count(needle.lower())
+    if not text_is_lower:
+        haystack = haystack.lower()
+    if not term_is_lower:
+        needle = needle.lower()
+    return haystack.count(needle)
 
 
 def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None) -> float:
@@ -277,22 +281,27 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
     if not content:
         return 0.0
 
+    lowered = content.lower()
+
     unique_hits = 0
     total_hits = 0
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
     normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
+
     for term in terms:
-        matches = count_term_matches(content, term)
+        needle = term.lower()
+        if not needle:
+            continue
+        matches = lowered.count(needle)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
-            if term.strip().lower() not in normalized_phrases:
+            if needle.strip() not in normalized_phrases:
                 non_phrase_unique_hits += 1
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
     for phrase in phrases or []:
         if phrase and phrase.lower() in lowered:
             phrase_hits += 1

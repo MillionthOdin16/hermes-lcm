@@ -1,0 +1,3 @@
+## 2026-03-08 - Avoid Repeated String Lowercasing in Hot Loops
+**Learning:** Python's CPython implementation does not optimize `.lower()` for strings that are already lowercase; it creates a new string object every time. When used inside a hot loop (like a fallback search loop iterating over many candidate rows in `dag.py` and `store.py`'s `_search_messages_fallback_impl`), redundant `.lower()` calls on the same terms and row contents become a severe CPU and memory allocation bottleneck.
+**Action:** Always pre-calculate case transformations (e.g., lowercase the search terms and the candidate row's content once) before entering the innermost scoring or evaluation loop, passing these pre-calculated values into shared helper functions instead of recomputing them.

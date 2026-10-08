@@ -1549,13 +1549,16 @@ class MessageStore:
                 f"({directness_expr}) DESC, store_id DESC"
             )
 
+        lowered_terms = [(term or "").lower() for term in terms]
+
         def add_rows(rows: list[sqlite3.Row]) -> None:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
+                lowered_content = content.lower() if content else ""
                 score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
+                    min(count_term_matches(content, term, _lowered_text=lowered_content, _lowered_term=l_term), 1) if collapse_risky_repeats else count_term_matches(content, term, _lowered_text=lowered_content, _lowered_term=l_term)
+                    for term, l_term in zip(terms, lowered_terms)
                 )
                 if score <= 0:
                     continue

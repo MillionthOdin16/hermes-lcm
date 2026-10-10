@@ -210,8 +210,8 @@ def _message_role_bias(role: str | None) -> float:
     return 1.0
 
 
-def _message_directness_score(role: str | None, content: str | None, terms: List[str], phrases: List[str] | None = None) -> float:
-    score = compute_directness_score(content or "", terms, phrases)
+def _message_directness_score(role: str | None, content: str | None, terms: List[str], phrases: List[str] | None = None, content_lower: str | None = None, terms_lower: List[str] | None = None, phrases_lower: List[str] | None = None) -> float:
+    score = compute_directness_score(content or "", terms, phrases, content_lower, terms_lower, phrases_lower)
     if role == "tool":
         stripped = (content or "").lstrip()
         if stripped.startswith("{") or stripped.startswith("["):
@@ -1549,20 +1549,30 @@ class MessageStore:
                 f"({directness_expr}) DESC, store_id DESC"
             )
 
+        terms_lower = [term.lower() for term in terms]
+        phrases_lower = [phrase.lower() for phrase in (phrases or []) if phrase]
+
         def add_rows(rows: list[sqlite3.Row]) -> None:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
-                score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
-                )
+                content_lower = content.lower()
+
+                score = 0
+                for term_lower in terms_lower:
+                    term_score = count_term_matches(content_lower, term_lower, is_lowered=True)
+                    if collapse_risky_repeats:
+                        term_score = min(term_score, 1)
+                    score += term_score
+
                 if score <= 0:
                     continue
                 result["search_rank"] = -float(score)
                 result["snippet"] = build_snippet(content, terms)
                 result["_fallback_score"] = float(score)
-                result["_directness_score"] = _message_directness_score(result.get("role"), content, terms, phrases)
+                result["_directness_score"] = _message_directness_score(
+                    result.get("role"), content, terms, phrases, content_lower, terms_lower, phrases_lower
+                )
                 results.append(result)
 
         if normalized_sort == "recency":

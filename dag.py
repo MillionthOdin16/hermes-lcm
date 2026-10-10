@@ -581,6 +581,8 @@ class SummaryDAG:
         scanned_rows = 0
         results: list[SummaryNode] = []
         source_match_cache: dict[int, bool] = {}
+        terms_lower = [t.lower() for t in terms]
+        phrases_lower = [phrase.lower() for phrase in (phrases or []) if phrase]
         while True:
             try:
                 with self._db_lock:
@@ -609,7 +611,8 @@ class SummaryDAG:
             for node in raw_nodes:
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
-                node.search_directness = compute_directness_score(node.summary, terms, phrases)
+                node_summary_lower = (node.summary or "").lower()
+                node.search_directness = compute_directness_score(node.summary, terms, phrases, node_summary_lower, terms_lower, phrases_lower)
                 if apply_directness_adjustment and node.search_rank is not None:
                     rank_adjustment = max(float(node.search_directness), 0.0)
                     node.search_rank = float(node.search_rank) - (rank_adjustment * 2e-7)
@@ -670,6 +673,8 @@ class SummaryDAG:
         scanned_rows = 0
         nodes: list[SummaryNode] = []
         source_match_cache: dict[int, bool] = {}
+        terms_lower = [t.lower() for t in terms]
+        phrases_lower = [phrase.lower() for phrase in (phrases or []) if phrase]
         while True:
             with self._db_lock:
                 rows = self._conn.execute(
@@ -683,14 +688,19 @@ class SummaryDAG:
                 node = self._row_to_node(row)
                 if source and not self._node_matches_source(node.node_id, source, cache=source_match_cache):
                     continue
-                score = sum(
-                    min(count_term_matches(node.summary, term), 1) if collapse_risky_repeats else count_term_matches(node.summary, term)
-                    for term in terms
-                )
+                node_summary_lower = (node.summary or "").lower()
+
+                score = 0
+                for term_lower in terms_lower:
+                    term_score = count_term_matches(node_summary_lower, term_lower, is_lowered=True)
+                    if collapse_risky_repeats:
+                        term_score = min(term_score, 1)
+                    score += term_score
+
                 if score <= 0:
                     continue
                 node.search_rank = -float(score)
-                node.search_directness = compute_directness_score(node.summary, terms, phrases)
+                node.search_directness = compute_directness_score(node.summary, terms, phrases, node_summary_lower, terms_lower, phrases_lower)
                 nodes.append(node)
 
             nodes.sort(key=lambda node: _fallback_result_sort_key(node, sort))

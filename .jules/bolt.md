@@ -1,0 +1,3 @@
+## 2026-10-10 - Redundant string lowercasing in hot loops
+**Learning:** Python's CPython implementation does not optimize `.lower()` for strings that are already lowercase; it generates a new string object every time. Therefore, redundantly calling `.lower()` on the same string inside a loop results in unnecessary memory allocations and CPU overhead, especially inside search/ranking hot loops where both haystack and needle strings are repeatedly lowercased.
+**Action:** Pre-process text invariants (lowercase candidate text and search terms) outside of hot loops to avoid repetitive lowercasing. Update utility functions (like `count_term_matches`) to accept pre-lowered strings.

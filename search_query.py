@@ -264,37 +264,48 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, is_lowered: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
-    return haystack.lower().count(needle.lower())
+    if not is_lowered:
+        haystack = haystack.lower()
+        needle = needle.lower()
+    return haystack.count(needle)
 
 
-def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None) -> float:
+def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None, content_lower: str | None = None, terms_lower: List[str] | None = None, phrases_lower: List[str] | None = None) -> float:
     content = text or ""
     if not content:
         return 0.0
+
+    if content_lower is None:
+        content_lower = content.lower()
 
     unique_hits = 0
     total_hits = 0
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
-    normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
-    for term in terms:
-        matches = count_term_matches(content, term)
+
+    if phrases_lower is None:
+        phrases_lower = [phrase.lower() for phrase in (phrases or []) if phrase]
+    normalized_phrases = {phrase.strip() for phrase in phrases_lower if phrase.strip()}
+
+    _terms_lower = terms_lower if terms_lower is not None else [t.lower() for t in terms]
+    for term_lower in _terms_lower:
+        matches = count_term_matches(content_lower, term_lower, is_lowered=True)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
-            if term.strip().lower() not in normalized_phrases:
+            if term_lower.strip() not in normalized_phrases:
                 non_phrase_unique_hits += 1
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
-    for phrase in phrases or []:
-        if phrase and phrase.lower() in lowered:
+    lowered = content_lower
+    for phrase_lower in phrases_lower:
+        if phrase_lower and phrase_lower in lowered:
             phrase_hits += 1
 
     repetition_penalty = max(0, total_hits - unique_hits)

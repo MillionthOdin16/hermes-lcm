@@ -1,0 +1,3 @@
+## 2026-10-27 - [Lowercasing String Operations]
+**Learning:** Calling `.lower()` repeatedly in search loops is an anti-pattern. CPython does not optimize `.lower()` for strings that are already lowercase; it generates a new string object every time. Therefore, redundantly calling `.lower()` on the same string inside a loop results in unnecessary memory allocations and CPU overhead. Pre-process text to lowercase before iterating.
+**Action:** When working in `search_query.py` and `store.py`, look for `.lower()` calls inside `for` loops or comprehensions, especially those iterating over search terms or content. Pre-process content or terms to lowercase outside the loop. Be careful not to inline shared utilities unless appropriate.

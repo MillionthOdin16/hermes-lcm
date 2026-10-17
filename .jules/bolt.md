@@ -1,0 +1,3 @@
+## 2026-10-25 - Redundant string allocations in hot ranking loops
+**Learning:** Calling `.lower()` inside ranking loops (like candidate filtering in `dag.py`, `store.py`, `search_query.py`) generates a new string object for each candidate per term. Python does not optimize string lowercasing, leading to O(N * M) string allocations and severe CPU bottlenecks during large queries.
+**Action:** When implementing text search or ranking loops over many rows, pre-process text invariables (like lowering the search terms) outside the loops, and lower the candidate row text once per row rather than once per term. Introduce a `pre_lowered` flag to shared matching utilities to bypass internal redundant case adjustments.

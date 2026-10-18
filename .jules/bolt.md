@@ -1,0 +1,3 @@
+## 2026-06-25 - Repetitive String Allocation Anti-Pattern
+**Learning:** CPython generates a new string object every time `.lower()` is called, even if the string is already lowercase. When scoring text in hot search loops (like `_search_like` in `dag.py` and `store.py`), doing this inside the loop scales poorly and causes unnecessary memory allocations and CPU overhead.
+**Action:** Pre-process invariants (like candidate text and search terms) to lowercase outside of loops, and optionally pass a bypass flag (like `pre_lowered=True` for `count_term_matches`) to shared utilities to preserve backwards compatibility for other callers while optimizing hot paths.

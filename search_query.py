@@ -264,11 +264,13 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, pre_lowered: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
+    if pre_lowered:
+        return haystack.count(needle)
     return haystack.lower().count(needle.lower())
 
 

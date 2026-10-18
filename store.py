@@ -530,23 +530,33 @@ class MessageStore:
         stubs. Direct callers should use ``append_batch`` so storage-boundary
         payload protection cannot be bypassed accidentally.
         """
+        if not messages:
+            return []
+
         if token_estimates is None:
             token_estimates = [0] * len(messages)
 
         ids = []
+        base_time = time.time()
+        chunk_size = 50  # 50 rows * 14 params = 700 params (< 999 SQLite limit)
+
         with self._write_lock, self._conn:
-            for msg, est in zip(messages, token_estimates):
-                tc = msg.get("tool_calls")
-                tc_json = json.dumps(tc) if tc else None
-                ts = time.time()
-                observed_at = _normalize_observed_at(msg.get("timestamp"))
-                cur = self._conn.execute(
-                    """INSERT INTO messages
-                       (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
-                        tool_name, timestamp, token_estimate, pinned, ingested_at,
-                        observed_at, observed_at_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
+            for i in range(0, len(messages), chunk_size):
+                chunk_msgs = messages[i:i + chunk_size]
+                chunk_ests = token_estimates[i:i + chunk_size]
+
+                query_parts = []
+                params = []
+
+                for j, (msg, est) in enumerate(zip(chunk_msgs, chunk_ests)):
+                    tc = msg.get("tool_calls")
+                    tc_json = json.dumps(tc) if tc else None
+                    # Ensure timestamps are strictly unique for regression tests
+                    ts = base_time + ((i + j) * 1e-6)
+                    observed_at = _normalize_observed_at(msg.get("timestamp"))
+
+                    query_parts.append("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                    params.extend((
                         session_id,
                         _normalize_source_value(source),
                         _normalize_conversation_id_value(conversation_id),
@@ -561,9 +571,17 @@ class MessageStore:
                         ts,
                         observed_at,
                         "host_message_timestamp" if observed_at is not None else None,
-                    ),
-                )
-                ids.append(cur.lastrowid)
+                    ))
+
+                query = f"""INSERT INTO messages
+                           (session_id, source, conversation_id, role, content, tool_call_id, tool_calls,
+                            tool_name, timestamp, token_estimate, pinned, ingested_at,
+                            observed_at, observed_at_source)
+                           VALUES {','.join(query_parts)} RETURNING store_id"""
+
+                cur = self._conn.execute(query, params)
+                ids.extend(row[0] for row in cur.fetchall())
+
         return ids
 
     def reassign_session_messages(self, old_session_id: str, new_session_id: str) -> int:
@@ -1549,13 +1567,15 @@ class MessageStore:
                 f"({directness_expr}) DESC, store_id DESC"
             )
 
+        lowered_terms = [t.lower() for t in terms]
         def add_rows(rows: list[sqlite3.Row]) -> None:
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
+                lowered_content = content.lower()
                 score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
+                    min(count_term_matches(lowered_content, l_term, pre_lowered=True), 1) if collapse_risky_repeats else count_term_matches(lowered_content, l_term, pre_lowered=True)
+                    for l_term in lowered_terms
                 )
                 if score <= 0:
                     continue

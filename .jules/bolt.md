@@ -1,0 +1,3 @@
+## 2026-05-18 - String Case Pre-processing
+**Learning:** Python's CPython does not optimize `.lower()` for strings that are already lowercase; it generates a new string object every time. Therefore, redundantly calling `.lower()` on the same string inside a loop (like search/ranking loops in `dag.py`, `store.py`, `search_query.py`) results in unnecessary memory allocations and CPU overhead, creating severe bottlenecks.
+**Action:** Pre-process text invariants (lowercase candidate text and search terms) outside of hot loops. When dealing with shared utility functions, add a `pre_lowered: bool = False` flag to bypass the operation rather than altering the default behavior to avoid breaking other callers.

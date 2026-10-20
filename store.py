@@ -1550,13 +1550,24 @@ class MessageStore:
             )
 
         def add_rows(rows: list[sqlite3.Row]) -> None:
+            lowered_terms = [(t, t.strip().lower()) for t in terms]
             for row in rows:
                 result = self._row_to_dict(row)
                 content = result.get("content") or ""
-                score = sum(
-                    min(count_term_matches(content, term), 1) if collapse_risky_repeats else count_term_matches(content, term)
-                    for term in terms
-                )
+
+                score = 0
+                if content:
+                    lowered_content = content.lower()
+                    for term, lowered_term in lowered_terms:
+                        if not lowered_term:
+                            continue
+                        matches = count_term_matches(lowered_content, lowered_term, pre_lowered=True)
+                        if matches > 0:
+                            if collapse_risky_repeats:
+                                score += 1
+                            else:
+                                score += matches
+
                 if score <= 0:
                     continue
                 result["search_rank"] = -float(score)

@@ -264,11 +264,14 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, pre_lowered: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
+    # ⚡ Bolt Optimization: bypass redundant .lower() if inputs are pre-lowered
+    if pre_lowered:
+        return haystack.count(needle)
     return haystack.lower().count(needle.lower())
 
 
@@ -282,17 +285,22 @@ def compute_directness_score(text: str, terms: List[str], phrases: List[str] | N
     non_phrase_unique_hits = 0
     non_phrase_total_hits = 0
     normalized_phrases = {(phrase or "").strip().lower() for phrase in (phrases or []) if (phrase or "").strip()}
-    for term in terms:
-        matches = count_term_matches(content, term)
+
+    # ⚡ Bolt Optimization: pre-lowercase text and terms outside hot loop
+    lowered_content = content.lower()
+    lowered_terms = [term.lower() for term in terms]
+
+    for term, original_term in zip(lowered_terms, terms):
+        matches = count_term_matches(lowered_content, term, pre_lowered=True)
         if matches > 0:
             unique_hits += 1
             total_hits += matches
-            if term.strip().lower() not in normalized_phrases:
+            if original_term.strip().lower() not in normalized_phrases:
                 non_phrase_unique_hits += 1
                 non_phrase_total_hits += matches
 
     phrase_hits = 0
-    lowered = content.lower()
+    lowered = lowered_content
     for phrase in phrases or []:
         if phrase and phrase.lower() in lowered:
             phrase_hits += 1

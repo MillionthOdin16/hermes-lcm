@@ -1,0 +1,3 @@
+## 2026-05-19 - Performance Optimization
+**Learning:** Repetitive string operations (like `.lower()`) and function calls inside hot loops (e.g., search/ranking loops in `dag.py`, `store.py`, `search_query.py`) create severe CPU bottlenecks. Pre-process invariants (lowercase candidate text and search terms) outside the loops. Avoid inlining shared utility functions like `count_term_matches` to avoid review rejections; instead, pass pre-processed inputs or carefully update the utility's implementation.
+**Action:** When optimizing shared utility functions to avoid redundant operations, introduce an optional flag (e.g., `pre_lowered: bool = False`) to allow specific optimized callers to bypass the operation while preserving backwards compatibility.

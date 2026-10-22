@@ -264,12 +264,12 @@ def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def count_term_matches(text: str, term: str) -> int:
+def count_term_matches(text: str, term: str, pre_lowered: bool = False) -> int:
     haystack = (text or "")
     needle = (term or "")
     if not haystack or not needle:
         return 0
-    return haystack.lower().count(needle.lower())
+    return (haystack if pre_lowered else haystack.lower()).count(needle if pre_lowered else needle.lower())
 
 
 def compute_directness_score(text: str, terms: List[str], phrases: List[str] | None = None) -> float:
